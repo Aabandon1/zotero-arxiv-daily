@@ -209,6 +209,40 @@ def test_run_end_to_end(config, monkeypatch):
     assert "text/html" in email_body
 
 
+def test_recommendations_without_llm(config, monkeypatch):
+    from types import SimpleNamespace
+    from tests.canned_responses import make_sample_corpus
+    from zotero_arxiv_daily.retriever.arxiv_retriever import ArxivRetriever
+    from zotero_arxiv_daily.reranker.local import LocalReranker
+
+    config.llm = {"enabled": False}
+    config.executor.source = ["arxiv"]
+    config.executor.reranker = "local"
+    raw = SimpleNamespace(title="Recommended paper", authors=[SimpleNamespace(name="Author A")],
+                          summary="Original abstract", entry_id="https://arxiv.org/abs/1",
+                          pdf_url="https://arxiv.org/pdf/1")
+    def unexpected(*args, **kwargs):
+        pytest.fail("Recommendation mode tried to use an LLM or download full text")
+
+    monkeypatch.setattr("zotero_arxiv_daily.executor.OpenAI", unexpected)
+    for name in ("extract_text_from_tar", "extract_text_from_html", "extract_text_from_pdf"):
+        monkeypatch.setattr(f"zotero_arxiv_daily.retriever.arxiv_retriever.{name}", unexpected)
+    monkeypatch.setattr(ArxivRetriever, "_retrieve_raw_papers", lambda self: [raw])
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+    monkeypatch.setattr(Executor, "fetch_zotero_corpus", lambda self: make_sample_corpus(1))
+    import numpy as np
+    monkeypatch.setattr(LocalReranker, "get_similarity_score", lambda self, a, b: np.array([[0.8]]))
+    sent = []
+    monkeypatch.setattr("zotero_arxiv_daily.executor.send_email", lambda cfg, html: sent.append(html))
+
+    Executor(config).run()
+    html, = sent
+    for value in (raw.title, "Author A", "8.0", raw.pdf_url):
+        assert value in html
+    for value in ("TLDR", "Unknown Affiliation", raw.summary):
+        assert value not in html
+
+
 def test_run_no_papers_send_empty_false(config, monkeypatch):
     """When no papers are found and send_empty=false, no email is sent."""
     import smtplib

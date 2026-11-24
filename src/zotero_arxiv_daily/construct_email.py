@@ -63,8 +63,7 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
     <tr>
         <td style="font-size: 14px; color: #666; padding: 8px 0;">
             {authors}
-            <br>
-            <i>{affiliations}</i>
+            {affiliation_line}
         </td>
     </tr>
     <tr>
@@ -72,11 +71,7 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
             <strong>Relevance:</strong> {rate}
         </td>
     </tr>
-    <tr>
-        <td style="font-size: 14px; color: #333; padding: 8px 0;">
-            <strong>TLDR:</strong> {tldr}
-        </td>
-    </tr>
+    {summary_row}
 
     <tr>
         <td style="padding: 8px 0;">
@@ -85,7 +80,13 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
     </tr>
 </table>
 """
-    return block_template.format(title=title, authors=authors,rate=rate, tldr=tldr, pdf_url=pdf_url, affiliations=affiliations)
+    affiliation_line = f"<br><i>{affiliations}</i>" if affiliations else ""
+    summary_row = (
+        f'<tr><td style="font-size: 14px; color: #333; padding: 8px 0;"><strong>TLDR:</strong> {tldr}</td></tr>'
+        if tldr else ""
+    )
+    return block_template.format(title=title, authors=authors, rate=rate, summary_row=summary_row,
+                                 pdf_url=pdf_url, affiliation_line=affiliation_line)
 
 def get_stars(score:float):
     full_star = '<span class="full-star">⭐</span>'
@@ -124,7 +125,7 @@ def render_email(papers:list[Paper]) -> str:
             if len(p.affiliations) > 5:
                 affiliations += ', ...'
         else:
-            affiliations = 'Unknown Affiliation'
+            affiliations = 'Unknown Affiliation' if p.tldr else None
         parts.append(get_block_html(p.title, authors, rate, p.tldr, p.pdf_url, affiliations))
 
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
